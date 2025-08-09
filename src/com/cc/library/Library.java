@@ -9,7 +9,13 @@ import java.util.Scanner;
 //Class
 public class Library {
 
- // Main driver method
+ /**
+  * Entry point for the library management system application.
+  *
+  * Launches a console-based menu that allows users to manage books and students, including adding, updating, searching, displaying, renting, and returning books, as well as registering and displaying students. The application continues to prompt for user input until the exit option is selected.
+  *
+  * @param args command-line arguments (not used)
+  */
  public static void main(String[] args)
  {
      // Creating object of Scanner class
@@ -125,6 +131,9 @@ public class Library {
      while (choice != 0);
  }
 
+ /**
+  * Displays the main menu options for the library management system and prompts the user for input.
+  */
  private static void dispMenu() {
 	// TODO Auto-generated method stub
 	System.out.println(
