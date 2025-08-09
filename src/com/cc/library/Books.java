@@ -11,6 +11,11 @@ public class Books {
 	HashMap<Book, Integer> borrowedBooks =  new HashMap<Book, Integer>();
 	static Scanner sc = new Scanner(System.in);
 	
+	/**
+	 * Adds a new book to the library collection based on user input for name, author, and quantity.
+	 *
+	 * Prompts the user to enter the book's name, author, and quantity, then creates and adds the book to the collection if it is not null or already present.
+	 */
 	public void addBook() {
 		Book book = new Book(askString("Whats the book name?"), askString("Whats the author name?"), askInt("How many books are you adding?"));
 		if(book!=null || this.booklist.contains(book) ) {
@@ -18,6 +23,11 @@ public class Books {
 		}
 	}
 	
+	/**
+	 * Allows a user to borrow a book by selecting from available books with quantity greater than one.
+	 *
+	 * Prompts the user to enter the Book ID of a book to borrow. If the ID is valid and the book is available, the book is added to the borrowed books list and its quantity is decreased by one. If the input is invalid or the book is not available, an error message is displayed.
+	 */
 	public void rentAbook() {
 		System.out.println("Avaliable books to borrow:");
 		List<Integer> availableIDs = new ArrayList<Integer>();
@@ -40,18 +50,35 @@ public class Books {
 		}
 	}
 	
+	/**
+	 * Prompts the user with the specified message and reads an integer input from the console.
+	 *
+	 * @param prompt the message displayed to the user before input
+	 * @return the integer value entered by the user
+	 */
 	public static int askInt(String prompt){
 		System.out.println(prompt);
 		return sc.nextInt();
 		
 	}
 	
+	/**
+	 * Prompts the user with the specified message and returns the entered string.
+	 *
+	 * @param prompt the message displayed to the user before input
+	 * @return the string input provided by the user
+	 */
 	public static String askString(String prompt){
 		System.out.println(prompt);
 		return sc.nextLine();
 		
 	}
 	
+	/**
+	 * Processes the return of a borrowed book by its ID.
+	 *
+	 * Prompts the user to enter the ID of the book to return. If the book is found in the borrowed books list, it updates the borrowed count or removes the entry if all copies are returned, increments the book's available quantity, and confirms the return. If the book was not borrowed or the input is invalid, it notifies the user.
+	 */
 	public void returnAbook(){
 		int bookIDtoReturn = askInt("Which Book ID are you returning?");
 		Book findBook = new Book(bookIDtoReturn);
@@ -71,6 +98,11 @@ public class Books {
 	}
 	
 	
+	/**
+	 * Displays all books currently available in the library.
+	 *
+	 * Prints a list of all books in the collection, or a message if no books are available.
+	 */
 	public void showAllBooks() {
 		if(booklist.isEmpty()) {
 			System.out.println("No books available in the library");
@@ -82,6 +114,11 @@ public class Books {
 		}
 	}
 	
+	/**
+	 * Searches for books in the collection by name and displays matching results.
+	 *
+	 * Prompts the user to enter a book name, performs a case-insensitive search in the book list, and prints all books that match the provided name. If no matches are found, informs the user accordingly.
+	 */
 	public void searchBook() {
 		String bookName = askString("Enter the book name you want to search:");
 		List<Book> foundBooks = new ArrayList<Book>();
@@ -101,6 +138,11 @@ public class Books {
 		}
 	}
 	
+	/**
+	 * Updates the quantity of a book in the collection based on user input.
+	 *
+	 * Prompts the user to enter a book ID and a new quantity. If the book ID is valid, updates the specified book's quantity and displays the updated information. If the ID is invalid, notifies the user.
+	 */
 	public void updateBook() {
 		int idofBook = askInt("Which book ID , you want to update?");
 		if(idofBook<0 || idofBook>=booklist.size()) {
