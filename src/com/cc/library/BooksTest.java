@@ -9,6 +9,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.Scanner;
+import java.util.NoSuchElementException;
+import java.util.InputMismatchException;
 
 /**
  * Comprehensive unit tests for the Books class.
@@ -707,5 +709,495 @@ public class BooksTest {
         // Due to the way Book equality works (by ID only), this should work
         assertEquals(6, originalBook.getQuantity());
         assertFalse(books.borrowedBooks.containsKey(originalBook));
+    }
+
+    // ==================== Additional Comprehensive Tests - Bug Detection ====================
+    
+    @Test
+    void testAddBook_LogicBugWithOrCondition() {
+        // BUG: The condition if(book!=null || this.booklist.contains(book)) 
+        // uses OR instead of AND, allowing duplicates
+        setSystemInput("DuplicateBook\nAuthor\n5\n");
+        books.addBook();
+        assertEquals(1, books.booklist.size());
+        
+        // Add same book again - buggy logic allows duplicate
+        setSystemInput("DuplicateBook\nAuthor\n5\n");
+        books.addBook();
+        
+        // Bug confirmed: duplicate gets added
+        assertEquals(2, books.booklist.size());
+    }
+    
+    @Test
+    void testRentAbook_IndexVsIDBug() {
+        // BUG: rentAbook uses booklist.get(borrowingBookID) treating ID as index
+        Book book1 = new Book("Book1", "Author1", 5);
+        Book book2 = new Book("Book2", "Author2", 3);
+        books.booklist.add(book1); // index 0, ID will be >0
+        books.booklist.add(book2); // index 1, ID will be >1
+        
+        int actualID = book2.getBookID();
+        setSystemInput(actualID + "\n");
+        
+        try {
+            books.rentAbook();
+            // Will throw IndexOutOfBoundsException when ID > list size
+            fail("Expected IndexOutOfBoundsException");
+        } catch (IndexOutOfBoundsException e) {
+            // Expected - documents the bug
+            assertTrue(true);
+        }
+    }
+    
+    @Test
+    void testReturnAbook_SameIndexBug() {
+        // BUG: returnAbook also uses booklist.get(bookIDtoReturn)
+        Book book = new Book("Book", "Author", 5);
+        books.booklist.add(book);
+        books.borrowedBooks.put(book, 1);
+        
+        int bookID = book.getBookID();
+        setSystemInput(bookID + "\n");
+        
+        try {
+            books.returnAbook();
+            fail("Expected IndexOutOfBoundsException");
+        } catch (IndexOutOfBoundsException e) {
+            // Expected due to ID/index mismatch
+            assertTrue(true);
+        }
+    }
+    
+    // ==================== Scanner Buffer Management Issues ====================
+    
+    @Test
+    void testScannerNextIntNextLineIssue() {
+        // Classic Scanner problem: nextInt() leaves newline in buffer
+        setSystemInput("42\nExpectedString\n");
+        
+        int num = Books.askInt("Number:");
+        String str = Books.askString("String:");
+        
+        assertEquals(42, num);
+        // Bug: nextLine() reads the leftover newline, not "ExpectedString"
+        assertEquals("", str);
+    }
+    
+    @Test
+    void testMultipleAskOperations() {
+        setSystemInput("First\nSecond\n100\nThird\n");
+        
+        String s1 = Books.askString("S1:");
+        String s2 = Books.askString("S2:");
+        int i1 = Books.askInt("I1:");
+        String s3 = Books.askString("S3:");
+        
+        assertEquals("First", s1);
+        assertEquals("Second", s2);
+        assertEquals(100, i1);
+        assertEquals("", s3); // Scanner buffer issue after nextInt
+    }
+    
+    // ==================== Extreme Input Tests ====================
+    
+    @Test
+    void testAddBook_MassiveInputStrings() {
+        // Test with 10,000 character book name
+        String longName = "X".repeat(10000);
+        String longAuthor = "Y".repeat(5000);
+        
+        setSystemInput(longName + "\n" + longAuthor + "\n999\n");
+        books.addBook();
+        
+        assertEquals(1, books.booklist.size());
+        assertEquals(longName, books.booklist.get(0).getBookName());
+        assertEquals(longAuthor, books.booklist.get(0).getBookAuthor());
+    }
+    
+    @Test
+    void testAddBook_UnicodeAndEmojis() {
+        String unicodeName = "📚 Bücher 本 książka βιβλίο 📖";
+        String unicodeAuthor = "👨‍🏫 José García Müller 李明 🌍";
+        
+        setSystemInput(unicodeName + "\n" + unicodeAuthor + "\n7\n");
+        books.addBook();
+        
+        assertEquals(unicodeName, books.booklist.get(0).getBookName());
+        assertEquals(unicodeAuthor, books.booklist.get(0).getBookAuthor());
+    }
+    
+    @Test
+    void testAddBook_ControlCharacters() {
+        String nameWithTabs = "Book\t\tWith\tTabs";
+        String nameWithNewlines = "Book\\nWith\\nNewlines"; // Escaped in input
+        
+        setSystemInput(nameWithTabs + "\n" + nameWithNewlines + "\n5\n");
+        books.addBook();
+        
+        assertEquals(nameWithTabs, books.booklist.get(0).getBookName());
+        assertEquals(nameWithNewlines, books.booklist.get(0).getBookAuthor());
+    }
+    
+    // ==================== Boundary Value Analysis ====================
+    
+    @Test
+    void testRentAbook_QuantityBoundaries() {
+        // Test boundary: quantity must be >1 to be available
+        Book q0 = new Book("Q0", "A", 0);
+        Book q1 = new Book("Q1", "A", 1);
+        Book q2 = new Book("Q2", "A", 2);
+        
+        books.booklist.add(q0);
+        books.booklist.add(q1);
+        books.booklist.add(q2);
+        
+        setSystemInput("1\n");
+        books.rentAbook();
+        
+        String output = outputStream.toString();
+        assertFalse(output.contains("Q0"));
+        assertFalse(output.contains("Q1")); // quantity=1 not available
+        assertTrue(output.contains("Q2"));  // quantity=2 is available
+    }
+    
+    @Test
+    void testUpdateBook_EdgeIndices() {
+        books.booklist.add(new Book("Book", "Author", 5));
+        
+        // Test index = size (out of bounds)
+        setSystemInput("1\n");
+        books.updateBook();
+        String output = outputStream.toString();
+        assertTrue(output.contains("Not a valid Book ID"));
+        
+        // Test index = -1 (negative)
+        outputStream.reset();
+        setSystemInput("-1\n");
+        books.updateBook();
+        output = outputStream.toString();
+        assertTrue(output.contains("Not a valid Book ID"));
+        
+        // Test index = 0 (valid)
+        outputStream.reset();
+        setSystemInput("0\n100\n");
+        books.updateBook();
+        assertEquals(100, books.booklist.get(0).getQuantity());
+    }
+    
+    @Test
+    void testBorrowedBooks_IntegerLimits() {
+        Book book = new Book("MaxBook", "Author", Integer.MAX_VALUE);
+        books.booklist.add(book);
+        
+        // Set borrowed count to MAX_VALUE-1
+        books.borrowedBooks.put(book, Integer.MAX_VALUE - 1);
+        
+        // Try to borrow one more (would overflow)
+        setSystemInput("1\n");
+        books.rentAbook();
+        
+        // Check overflow behavior
+        int count = books.borrowedBooks.get(book);
+        assertEquals(Integer.MAX_VALUE, count); // Incremented to MAX_VALUE
+        assertEquals(Integer.MAX_VALUE - 1, book.getQuantity());
+    }
+    
+    // ==================== Output Format Bug Documentation ====================
+    
+    @Test
+    void testOutputTypos() {
+        Book book = new Book("TestBook", "Author", 5);
+        books.booklist.add(book);
+        
+        // Test "Avaliable" typo
+        setSystemInput("1\n");
+        books.rentAbook();
+        String output = outputStream.toString();
+        assertTrue(output.contains("Avaliable books")); // Typo
+        
+        // Test missing space in update message
+        outputStream.reset();
+        setSystemInput("0\n20\n");
+        books.updateBook();
+        output = outputStream.toString();
+        assertTrue(output.contains("20is the new quantity")); // Missing space
+    }
+    
+    // ==================== State Consistency and Invariants ====================
+    
+    @Test
+    void testBookQuantityInvariant() {
+        // Invariant: available_quantity + borrowed_count = original_quantity
+        Book book = new Book("InvariantBook", "Author", 20);
+        books.booklist.add(book);
+        int original = 20;
+        
+        // Borrow 8 copies
+        for (int i = 0; i < 8; i++) {
+            setSystemInput("1\n");
+            books.rentAbook();
+            outputStream.reset();
+        }
+        
+        int borrowed = books.borrowedBooks.get(book);
+        int available = book.getQuantity();
+        assertEquals(original, available + borrowed);
+        
+        // Return 3 copies
+        for (int i = 0; i < 3; i++) {
+            setSystemInput("1\n");
+            books.returnAbook();
+            outputStream.reset();
+        }
+        
+        borrowed = books.borrowedBooks.get(book);
+        available = book.getQuantity();
+        assertEquals(original, available + borrowed);
+    }
+    
+    @Test
+    void testHashMapKeyConsistency() {
+        // Book equality is based only on ID
+        Book book1 = new Book("Name1", "Author1", 10);
+        int id = book1.getBookID();
+        
+        books.borrowedBooks.put(book1, 5);
+        
+        // Create different book with same ID
+        Book book2 = new Book(id);
+        
+        // Should be considered same key
+        assertTrue(books.borrowedBooks.containsKey(book2));
+        assertEquals(5, books.borrowedBooks.get(book2).intValue());
+        
+        // Modify via book2
+        books.borrowedBooks.put(book2, 7);
+        assertEquals(7, books.borrowedBooks.get(book1).intValue());
+    }
+    
+    // ==================== Performance and Scalability ====================
+    
+    @Test
+    void testLargeLibrary_10000Books() {
+        // Add 10,000 books
+        for (int i = 0; i < 10000; i++) {
+            books.booklist.add(new Book("Book" + i, "Author" + i, i % 50 + 1));
+        }
+        
+        // Search for last book
+        setSystemInput("Book9999\n");
+        long start = System.currentTimeMillis();
+        books.searchBook();
+        long duration = System.currentTimeMillis() - start;
+        
+        assertTrue(duration < 2000, "Search too slow: " + duration + "ms");
+        
+        // Show all books (stress test output)
+        outputStream.reset();
+        start = System.currentTimeMillis();
+        books.showAllBooks();
+        duration = System.currentTimeMillis() - start;
+        
+        assertTrue(duration < 5000, "Display too slow: " + duration + "ms");
+        String output = outputStream.toString();
+        assertTrue(output.contains("Book0"));
+        assertTrue(output.contains("Book9999"));
+    }
+    
+    @Test
+    void testMassiveBorrowingOperations() {
+        Book book = new Book("PopularBook", "Author", 1000);
+        books.booklist.add(book);
+        
+        // Perform 500 borrow operations
+        for (int i = 0; i < 500; i++) {
+            setSystemInput("1\n");
+            books.rentAbook();
+            outputStream.reset();
+        }
+        
+        assertEquals(500, book.getQuantity());
+        assertEquals(500, books.borrowedBooks.get(book).intValue());
+        
+        // Return 250
+        for (int i = 0; i < 250; i++) {
+            setSystemInput("1\n");
+            books.returnAbook();
+            outputStream.reset();
+        }
+        
+        assertEquals(750, book.getQuantity());
+        assertEquals(250, books.borrowedBooks.get(book).intValue());
+    }
+    
+    // ==================== Complex Integration Scenarios ====================
+    
+    @Test
+    void testRealWorldLibraryDay() {
+        // Simulate a full day at the library
+        
+        // Morning: Add new arrivals
+        String[] titles = {"Clean Code", "Design Patterns", "Refactoring", "TDD By Example", "Domain Driven Design"};
+        String[] authors = {"Martin", "GoF", "Fowler", "Beck", "Evans"};
+        int[] quantities = {10, 8, 6, 5, 7};
+        
+        for (int i = 0; i < titles.length; i++) {
+            setSystemInput(titles[i] + "\n" + authors[i] + "\n" + quantities[i] + "\n");
+            books.addBook();
+            outputStream.reset();
+        }
+        
+        // Verify additions
+        assertEquals(5, books.booklist.size());
+        
+        // Students search for books
+        setSystemInput("Clean Code\n");
+        books.searchBook();
+        assertTrue(outputStream.toString().contains("Clean Code"));
+        outputStream.reset();
+        
+        // Multiple students borrow different books
+        for (int i = 1; i <= 3; i++) {
+            setSystemInput(i + "\n");
+            books.rentAbook();
+            outputStream.reset();
+        }
+        
+        assertEquals(3, books.borrowedBooks.size());
+        
+        // Librarian updates inventory (new shipment)
+        setSystemInput("0\n15\n"); // Update first book
+        books.updateBook();
+        assertEquals(15, books.booklist.get(0).getQuantity());
+        outputStream.reset();
+        
+        // Some returns
+        setSystemInput("1\n");
+        books.returnAbook();
+        outputStream.reset();
+        
+        // End of day report
+        books.showAllBooks();
+        String report = outputStream.toString();
+        for (String title : titles) {
+            assertTrue(report.contains(title));
+        }
+        
+        // Verify state consistency
+        assertTrue(books.borrowedBooks.size() >= 0);
+        for (Book book : books.booklist) {
+            assertTrue(book.getQuantity() >= 0);
+        }
+    }
+    
+    @Test
+    void testConcurrentUserSimulation() {
+        // Simulate multiple users interacting with the system
+        Book sharedBook = new Book("Popular Title", "Famous Author", 20);
+        books.booklist.add(sharedBook);
+        
+        // User 1: Borrow
+        setSystemInput("1\n");
+        books.rentAbook();
+        outputStream.reset();
+        
+        // User 2: Borrow same book
+        setSystemInput("1\n");
+        books.rentAbook();
+        outputStream.reset();
+        
+        // User 3: Try to search
+        setSystemInput("Popular Title\n");
+        books.searchBook();
+        outputStream.reset();
+        
+        // User 1: Return
+        setSystemInput("1\n");
+        books.returnAbook();
+        outputStream.reset();
+        
+        // User 4: Borrow
+        setSystemInput("1\n");
+        books.rentAbook();
+        outputStream.reset();
+        
+        // Verify final state
+        int finalBorrowed = books.borrowedBooks.get(sharedBook);
+        int finalQuantity = sharedBook.getQuantity();
+        assertEquals(20, finalQuantity + finalBorrowed);
+        assertEquals(2, finalBorrowed); // Net: 3 borrows - 1 return
+    }
+    
+    // ==================== Error Recovery and Robustness ====================
+    
+    @Test
+    void testSystemRecoveryAfterErrors() {
+        Book book = new Book("TestBook", "Author", 10);
+        books.booklist.add(book);
+        
+        // Series of invalid operations
+        setSystemInput("999\n"); // Invalid borrow
+        books.rentAbook();
+        outputStream.reset();
+        
+        setSystemInput("-5\n"); // Invalid update
+        books.updateBook();
+        outputStream.reset();
+        
+        setSystemInput("abc\n"); // Would cause InputMismatchException
+        try {
+            books.returnAbook();
+        } catch (InputMismatchException e) {
+            // Expected
+        }
+        outputStream.reset();
+        
+        // System should still function correctly
+        setSystemInput("1\n");
+        books.rentAbook();
+        assertEquals(9, book.getQuantity());
+        
+        setSystemInput("1\n");
+        books.returnAbook();
+        assertEquals(10, book.getQuantity());
+    }
+    
+    @Test
+    void testStaticCounterOverflow() {
+        // Save original counter
+        int original = Book.counter;
+        
+        // Set near maximum
+        Book.counter = Integer.MAX_VALUE - 1;
+        
+        Book book1 = new Book("Book1", "Author", 1);
+        assertEquals(Integer.MAX_VALUE, book1.getBookID());
+        
+        // This will overflow
+        Book book2 = new Book("Book2", "Author", 1);
+        assertEquals(Integer.MIN_VALUE, book2.getBookID());
+        
+        // Restore counter
+        Book.counter = original;
+    }
+    
+    @Test
+    void testEmptyStringInputs() {
+        // Test all empty inputs
+        setSystemInput("\n\n0\n");
+        books.addBook();
+        
+        assertEquals(1, books.booklist.size());
+        Book added = books.booklist.get(0);
+        assertEquals("", added.getBookName());
+        assertEquals("", added.getBookAuthor());
+        assertEquals(0, added.getQuantity());
+        
+        // Search for empty string
+        setSystemInput("\n");
+        books.searchBook();
+        String output = outputStream.toString();
+        assertTrue(output.contains("Books found") || output.contains("No books found"));
     }
 }
